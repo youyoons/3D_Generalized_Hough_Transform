@@ -45,7 +45,7 @@ def build_r_table(image, origin):
     
     dx = sobel(image, 0)  # x derivative
     dy = sobel(image, 1)  # y derivative
-    dz = sobel(image, 2)  # z derivative
+    dz = sobel(image, 2)  # z derivativeF
     
     mag = np.sqrt(dx*dx + dy*dy + dz*dz)
     mag_norm = mag/np.max(mag)
@@ -85,16 +85,14 @@ def build_r_table(image, origin):
     return r_table
 
 
-def accumulate_gradients(r_table, grayImage):
-    '''
-    Perform a General Hough Transform with the given image and R-table
-    '''
-    #edges = canny(grayImage, low_threshold=MIN_CANNY_THRESHOLD, high_threshold=MAX_CANNY_THRESHOLD)
-    
+def sobel_edges_3d(grayImage):
     dx = sobel(grayImage, 0)  # x derivative
     dy = sobel(grayImage, 1)  # y derivative
     dz = sobel(grayImage, 2)  # z derivative
     
+    #print(dx)
+    
+    #Get magnitude of gradient
     mag = np.sqrt(dx*dx + dy*dy + dz*dz)
     mag_norm = mag/np.max(mag)
     
@@ -105,8 +103,56 @@ def accumulate_gradients(r_table, grayImage):
     for i in range(edges.shape[0]):
         for j in range(edges.shape[1]):
             for k in range(edges.shape[2]):
-                if mag_norm[i,j,k] > 0.3 :# and mag_norm[i,j,k] < 0.9:
+                if mag_norm[i,j,k] > 0.4 :# and mag_norm[i,j,k] < 0.9:
                     edges[i,j,k] = True      
+    
+    return edges
+
+def canny_edges_3d(grayImage):
+    MIN_CANNY_THRESHOLD = 10
+    MAX_CANNY_THRESHOLD = 50
+    
+    dim = np.shape(grayImage)
+    
+    edges_x = np.zeros(grayImage.shape, dtype=bool) 
+    edges_y = np.zeros(grayImage.shape, dtype=bool) 
+    edges_z = np.zeros(grayImage.shape, dtype=bool) 
+    edges = np.zeros(grayImage.shape, dtype=bool) 
+    
+    #print(np.shape(edges))
+    
+    for i in range(dim[0]):
+        edges_x[i,:,:] = canny(grayImage[i,:,:], low_threshold=MIN_CANNY_THRESHOLD, high_threshold=MAX_CANNY_THRESHOLD)
+   
+    for j in range(dim[1]):
+        edges_y[:,j,:] = canny(grayImage[:,j,:], low_threshold=MIN_CANNY_THRESHOLD, high_threshold=MAX_CANNY_THRESHOLD)
+        
+    for k in range(dim[2]):
+        edges_z[:,:,k] = canny(grayImage[:,:,k], low_threshold=MIN_CANNY_THRESHOLD, high_threshold=MAX_CANNY_THRESHOLD)
+    
+    
+   # edges = canny(grayImage, low_threshold=MIN_CANNY_THRESHOLD, high_threshold=MAX_CANNY_THRESHOLD)
+    for i in range(dim[0]):
+        for j in range(dim[1]):
+            for k in range(dim[2]):
+                #edges[i,j,k] = (edges_x[i,j,k] and edges_y[i,j,k]) or (edges_x[i,j,k] and edges_z[i,j,k]) or (edges_y[i,j,k] and edges_z[i,j,k])
+                edges[i,j,k] = (edges_x[i,j,k]) or (edges_y[i,j,k]) or (edges_z[i,j,k])
+    
+    
+    return edges
+
+def LoG_3d(grayImage):
+    #https://stackoverflow.com/questions/22050199/python-implementation-of-the-laplacian-of-gaussian-edge-detection
+    return 0
+
+def accumulate_gradients(r_table, grayImage):
+    '''
+    Perform a General Hough Transform with the given image and R-table
+    '''
+    
+    #Choose Edge Detector as desired
+    edges = canny_edges_3d(grayImage) 
+    #edges = sobel_edges_3d(grayImage)
     
     phi, psi = gradient_orientation(edges)
     
@@ -114,13 +160,15 @@ def accumulate_gradients(r_table, grayImage):
     print("Accumulator shape: ", accumulator.shape)
     #print(accumulator)
 
+    #print(edges)
+
     print("Start Accumulation")
     for (i,j,k),value in np.ndenumerate(edges):
         #print(i,j,k,value)
         if value:
             #print(r_table.keys())
             #Changed to int(gradient) which makes more sense
-            for r in r_table[(phi[i,j,k], psi[i,j,k])]:
+            for r in r_table[(int(phi[i,j,k]), int(psi[i,j,k]))]:
                 accum_i, accum_j, accum_k = i+r[0], j+r[1], k+r[2]
                 if accum_i < accumulator.shape[0] and accum_j < accumulator.shape[1] and accum_k < accumulator.shape[2]:
                     accumulator[int(accum_i), int(accum_j), int(accum_k)] += 1
@@ -176,53 +224,82 @@ def test_general_hough(gh, reference_image, query):
     fig = plt.figure()
     fig.add_subplot(2,2,1)
     plt.title('Reference image')
-    plt.imshow(reference_image[15,:,:])
-    plt.show()
+    plt.imshow(reference_image[:,20,:])
+
     fig.add_subplot(2,2,2)
     plt.title('Query image')
-    plt.imshow(query_image[15,:,:])
+    plt.imshow(query_image[:,20,:])
     
     fig.add_subplot(2,2,3)
     plt.title('Accumulator')
-    plt.imshow(accumulator[25,:,:])
+    plt.imshow(accumulator[:,20,:])
     
     fig.add_subplot(2,2,4)
     plt.title('Detection')
-    plt.imshow(query_image[25,:,:])
-    
+    plt.imshow(query_image[:,20,:])
+
+    plt.show()
+        
     # top 5 results in red
-    m = n_max(accumulator, 10)
+    m = n_max(accumulator, 20)
     
     print(m)
     
     
     x_points = [pt[1][0] for pt in m]
     y_points = [pt[1][1] for pt in m] 
-    z_points = [pt[1][1] for pt  in m] 
+    z_points = [pt[1][2] for pt  in m] 
     print(x_points)
     print(y_points)
-    plt.scatter(y_points, z_points, marker='o', color='r')
+    print(z_points)
+    plt.scatter(z_points, x_points, marker='o', color='r')
     
     return
 
 
 def test():
     #Testing with 3D Images
-    np.random.seed(29)
-    sample_3d = np.random.randint(0, 256, size=(50,50,50))
+    #np.random.seed(29)
+    #sample_3d = np.random.randint(0, 256, size=(50,50,50))
 
-    print(np.shape(sample_3d))
-    print(sample_3d[3,3,4])
+
+    #Testing with a hollow cube
+    dicom_3d = np.zeros((40,40,40))
+    #Make both YZ planes have white sides
+    dicom_3d[10:15,10:30,10:30] = 127
+    dicom_3d[25:30,10:30,10:30] = 127
+    
+    #XZ Planes
+    dicom_3d[10:30,10:15,10:30] = 127
+    dicom_3d[10:30,25:30,10:30] = 127
+    
+    #XY Planes
+    dicom_3d[10:30,10:30,10:15] = 127
+    dicom_3d[10:30,10:30,25:30] = 127
+
+    print(np.shape(dicom_3d))
+    #print(dicom_3d[3,3,4])
     
     
     #Creating a test image
-    test_3d = sample_3d
+    test_3d = np.zeros((40,40,80))
+    test_3d[0:40,0:40,25:45] = dicom_3d[0:40,0:40,10:30]
+    test_3d[13:27,13:27,28:42] = 0
+    test_3d[2:22,10:30,2:22] = 170
+    test_3d[6:18,14:26,6:18] = 0
     
+    
+    #fig = plt.figure()
+    #fig.add_subplot(1,2,1)
+    #plt.imshow(dicom_3d[:,:,20])
+    #fig.add_subplot(1,2,2)
+    #plt.imshow(test_3d[:,:,20])
+    
+    #plt.show()
 
     
-    detect_s = general_hough_closure(sample_3d)
-    
-    test_general_hough(detect_s, sample_3d, test_3d)
+    detect_s = general_hough_closure(dicom_3d)
+    test_general_hough(detect_s, dicom_3d, test_3d)
 
 
     
