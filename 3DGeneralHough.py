@@ -7,6 +7,11 @@ from skimage.feature import canny
 from scipy.ndimage.filters import sobel
 from mpl_toolkits.mplot3d import Axes3D
 import cv2 as cv
+try:
+    import cPickle
+except ImportError:
+    import pickle as cPickle
+
 
 def gradient_orientation(image):
     '''
@@ -51,7 +56,6 @@ def build_r_table(image, origin):
     mag_norm = mag/np.max(mag)
     
     
-    print("Magnitude: ",mag.shape)
     #mag = generic_gradient_magnitude(image, sobel)
         
     print(dx[0,0,0], dy[0,0,0], dz[0,0,0], mag_norm[0,0,0])
@@ -109,8 +113,8 @@ def sobel_edges_3d(grayImage):
     return edges
 
 def canny_edges_3d(grayImage):
-    MIN_CANNY_THRESHOLD = 10
-    MAX_CANNY_THRESHOLD = 50
+    MIN_CANNY_THRESHOLD = 50
+    MAX_CANNY_THRESHOLD = 100
     
     dim = np.shape(grayImage)
     
@@ -122,21 +126,21 @@ def canny_edges_3d(grayImage):
     #print(np.shape(edges))
     
     for i in range(dim[0]):
-        edges_x[i,:,:] = canny(grayImage[i,:,:], low_threshold=MIN_CANNY_THRESHOLD, high_threshold=MAX_CANNY_THRESHOLD)
+        edges_x[i,:,:] = canny(grayImage[i,:,:], low_threshold=MIN_CANNY_THRESHOLD, high_threshold=MAX_CANNY_THRESHOLD, sigma = 0)
    
     for j in range(dim[1]):
-        edges_y[:,j,:] = canny(grayImage[:,j,:], low_threshold=MIN_CANNY_THRESHOLD, high_threshold=MAX_CANNY_THRESHOLD)
+        edges_y[:,j,:] = canny(grayImage[:,j,:], low_threshold=MIN_CANNY_THRESHOLD, high_threshold=MAX_CANNY_THRESHOLD, sigma = 0)
         
     for k in range(dim[2]):
-        edges_z[:,:,k] = canny(grayImage[:,:,k], low_threshold=MIN_CANNY_THRESHOLD, high_threshold=MAX_CANNY_THRESHOLD)
+        edges_z[:,:,k] = canny(grayImage[:,:,k], low_threshold=MIN_CANNY_THRESHOLD, high_threshold=MAX_CANNY_THRESHOLD, sigma = 0)
     
     
    # edges = canny(grayImage, low_threshold=MIN_CANNY_THRESHOLD, high_threshold=MAX_CANNY_THRESHOLD)
     for i in range(dim[0]):
         for j in range(dim[1]):
             for k in range(dim[2]):
-                #edges[i,j,k] = (edges_x[i,j,k] and edges_y[i,j,k]) or (edges_x[i,j,k] and edges_z[i,j,k]) or (edges_y[i,j,k] and edges_z[i,j,k])
-                edges[i,j,k] = (edges_x[i,j,k]) or (edges_y[i,j,k]) or (edges_z[i,j,k])
+                edges[i,j,k] = (edges_x[i,j,k] and edges_y[i,j,k]) or (edges_x[i,j,k] and edges_z[i,j,k]) or (edges_y[i,j,k] and edges_z[i,j,k])
+                #edges[i,j,k] = (edges_x[i,j,k]) or (edges_y[i,j,k]) or (edges_z[i,j,k])
     
     
     return edges
@@ -151,8 +155,8 @@ def accumulate_gradients(r_table, grayImage):
     '''
     
     #Choose Edge Detector as desired
-    edges = canny_edges_3d(grayImage) 
-    #edges = sobel_edges_3d(grayImage)
+    #edges = canny_edges_3d(grayImage) 
+    edges = sobel_edges_3d(grayImage)
     
     phi, psi = gradient_orientation(edges)
     
@@ -217,31 +221,34 @@ def test_general_hough(gh, reference_image, query):
     
     print("Accumulator Size: ", accumulator.shape)
     
-    plt.clf() #Clear the Current Figure
-    plt.gray() #Set colormap to gray
+    #plt.clf() #Clear the Current Figure
+    #plt.gray() #Set colormap to gray
     
     
     fig = plt.figure()
+    plt.gray()
+    
     fig.add_subplot(2,2,1)
     plt.title('Reference image')
-    plt.imshow(reference_image[:,20,:])
+    plt.imshow(reference_image[:,:,5])
 
     fig.add_subplot(2,2,2)
     plt.title('Query image')
-    plt.imshow(query_image[:,20,:])
+    plt.imshow(query_image[:,:,25])
+    
     
     fig.add_subplot(2,2,3)
     plt.title('Accumulator')
-    plt.imshow(accumulator[:,20,:])
+    plt.imshow(accumulator[:,:,25])
     
     fig.add_subplot(2,2,4)
     plt.title('Detection')
-    plt.imshow(query_image[:,20,:])
+    plt.imshow(query_image[:,:,25])
 
     plt.show()
         
     # top 5 results in red
-    m = n_max(accumulator, 20)
+    m = n_max(accumulator, 15)
     
     print(m)
     
@@ -252,16 +259,22 @@ def test_general_hough(gh, reference_image, query):
     print(x_points)
     print(y_points)
     print(z_points)
-    plt.scatter(z_points, x_points, marker='o', color='r')
+    plt.scatter(y_points, x_points, marker='o', color='r')
     
     return
 
 
 def test():
+    dicom_downsized = cPickle.load(open("dicom_3d_9183761_dwn4x.pkl","rb"),encoding = 'latin1')
+    print(np.shape(dicom_downsized))
+    c12_vertebrae = cPickle.load(open("dicom_3d_9183761_sample.pkl","rb"),encoding = 'latin1')
+    print(np.shape(c12_vertebrae))
+    detect_s = general_hough_closure(c12_vertebrae)
+    test_general_hough(detect_s, c12_vertebrae, dicom_downsized[:,30:90,:])
+    
+    #test_general_hough(detect_s, c12_vertebrae, c12_vertebrae)
+'''
     #Testing with 3D Images
-    #np.random.seed(29)
-    #sample_3d = np.random.randint(0, 256, size=(50,50,50))
-
 
     #Testing with a hollow cube
     dicom_3d = np.zeros((40,40,40))
@@ -296,15 +309,11 @@ def test():
     #plt.imshow(test_3d[:,:,20])
     
     #plt.show()
-
-    
-    detect_s = general_hough_closure(dicom_3d)
-    test_general_hough(detect_s, dicom_3d, test_3d)
-
+'''
 
     
 
 if __name__ == '__main__':
     print(os.getcwd())
-    os.chdir('C:\\Users\\yoons\\Documents\\4th Year Semester 1\\ESC499 - Thesis\\Generalized Hough Transform')
+    #os.chdir('C:\\Users\\yoons\\Documents\\4th Year Semester 1\\ESC499 - Thesis\\Undergraduate Thesis Scripts')
     test()
